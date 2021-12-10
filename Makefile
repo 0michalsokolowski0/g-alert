@@ -3,6 +3,10 @@ build: ## go build
 	$(call print-target)
 	go build main.go
 
+build_alpline: ## go build specific for alpine
+	$(call print-target)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -ldflags '-w -extldflags "-static"' -o "g-alert" main.go
+
 .PHONY: vet
 vet: ## go vet
 	$(call print-target)
