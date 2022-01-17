@@ -1,0 +1,20 @@
+time_location: ""
+smtp_client:
+  host: "<host>"
+  port: 587
+  username: "<username>"
+  password: "<password>"
+  connect_timeout: "10s"
+  send_timeout: "10s"
+
+alerts:
+  -
+    search_phrase: "bitcoin price"
+    cron_expression: "* * * * *"
+    email_to: "<email to be notified>"
+    email_subject: "BTC price notification"
+  -
+    search_phrase: "eth price"
+    cron_expression: "* * * * *"
+    email_to: "<email to be notified>"
+    email_subject: "eth price notification"

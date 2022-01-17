@@ -7,5 +7,8 @@ RUN apk add \
   --repository http://dl-cdn.alpinelinux.org/alpine/edge/main \
   googler
 
+ENV CONFIG_PATH="/etc/g-alert/config.yml"
+
+COPY config.yml /etc/g-alert
 COPY g-alert    /
 CMD ["/g-alert"]

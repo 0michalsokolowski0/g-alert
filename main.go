@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"log"
+	"github.com/0michalsokolowski0/g-alert/internal"
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+	"os"
 	"os/exec"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/go-co-op/gocron"
@@ -12,50 +16,101 @@ import (
 )
 
 func main() {
-	// TODO: move it to env var to make it configurable
-	scheduler := gocron.NewScheduler(time.Local)
+	configPath := os.Getenv("CONFIG_PATH")
+	logger := logrus.New()
 
-	// TODO: cron expression should be passed as env var
-	_, err := scheduler.Cron("*/1 * * * *").Do(func() {
-		out, err := exec.CommandContext(context.Background(), "googler", "--json", "--np", "--exact", "search_phrase").Output()
-		if err != nil {
-			panic(err)
-		}
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-		server := mail.NewSMTPClient()
-
-		// TODO: move to config
-		server.Host = "smtp.gmail.com"
-		server.Port = 587
-		server.Username = "!!!!@gmail.com"
-		server.Password = "!!!!"
-		server.Encryption = mail.EncryptionSTARTTLS
-		server.ConnectTimeout = 10 * time.Second
-		server.SendTimeout = 10 * time.Second
-
-		server.TLSConfig = &tls.Config{InsecureSkipVerify: true}
-
-		// SMTP client
-		smtpClient, err := server.Connect()
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		// New email simple html with inline and CC
-		email := mail.NewMSG()
-		email.SetFrom("From Example <example@example.com>").
-			AddTo("TO_EMAIL").
-			SetSubject("SUBJECT")
-
-		email.SetBody(mail.TextPlain, string(out))
-
-		err = email.Send(smtpClient)
-
-	})
+	config, err := internal.NewConfig(configPath)
 	if err != nil {
-		panic(err)
+		logger.WithError(err).Error("Failed to load configuration")
+		os.Exit(1)
 	}
 
-	scheduler.StartBlocking()
+	location, err := time.LoadLocation(config.TimeLocation)
+	if err != nil {
+		logger.WithError(err).Error("Failed to parse time location")
+		os.Exit(1)
+	}
+
+	stopCh := make(chan struct{}, 1)
+
+	scheduler := gocron.NewScheduler(location)
+	for _, alert := range config.Alerts {
+		_, err := scheduler.Cron(alert.CronExpression).Do(func() {
+			logger := logger.WithField("alert", alert)
+
+			out, err := exec.CommandContext(context.Background(), "googler", "--json", "--np", "--exact", alert.SearchPhrase).Output()
+			if err != nil {
+				logger.WithError(err).Errorf("Failed to execute command with search phrase '%s'", alert.SearchPhrase)
+				stopCh <- struct{}{}
+				return
+			}
+
+			server, err := newSMTPServer(config.SMTPClient)
+			if err != nil {
+				logger.WithError(err).Error("Failed to create SMTP server")
+				stopCh <- struct{}{}
+				return
+			}
+
+			smtpClient, err := server.Connect()
+			if err != nil {
+				logger.WithError(err).Error("Failed to connect to SMTP server")
+				stopCh <- struct{}{}
+				return
+			}
+
+			email := mail.NewMSG()
+			email.AddTo(alert.EmailTo).SetSubject(alert.EmailSubject)
+			email.SetBody(mail.TextPlain, string(out))
+			err = email.Send(smtpClient)
+			if err != nil {
+				logger.WithError(err).Errorf("Failed to send email")
+				stopCh <- struct{}{}
+				return
+			}
+		})
+		if err != nil {
+			logger.WithError(err).Errorf("Failed to create job")
+			os.Exit(1)
+		}
+	}
+
+	scheduler.StartAsync()
+
+	for {
+		select {
+		case <-stopCh:
+			scheduler.Stop()
+			os.Exit(1)
+		case <-sigs:
+			scheduler.Stop()
+			os.Exit(0)
+		}
+	}
+}
+
+func newSMTPServer(config internal.SMTPClientConfig) (*mail.SMTPServer, error) {
+	server := mail.NewSMTPClient()
+
+	server.Host = config.Host
+	server.Port = config.Port
+	server.Username = config.Username
+	server.Password = config.Password
+	server.Encryption = mail.EncryptionSTARTTLS
+	connectTimeout, err := time.ParseDuration(config.ConnectTimeout)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not parse duration from connect timeout")
+	}
+	server.ConnectTimeout = connectTimeout
+	sendTimeout, err := time.ParseDuration(config.SendTimeout)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not parse duration from connect timeout")
+	}
+	server.SendTimeout = sendTimeout
+	//server.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+
+	return server, nil
 }
