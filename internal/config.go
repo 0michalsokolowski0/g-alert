@@ -114,7 +114,7 @@ func NewConfig(configPath string) (*Config, error) {
 
 	file, err := os.Open(configPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "could not open config")
+		return nil, errors.Wrapf(err, "could not open config with path")
 	}
 	defer file.Close()
 

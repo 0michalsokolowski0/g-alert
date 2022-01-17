@@ -1,14 +1,12 @@
-FROM golang:1.17-alpine
+FROM golang:1.17.6-stretch
 WORKDIR /app
-RUN apk update && apk add wget
-RUN apk add \
-  --no-cache \
-  --repository http://dl-cdn.alpinelinux.org/alpine/edge/testing \
-  --repository http://dl-cdn.alpinelinux.org/alpine/edge/main \
-  googler
+RUN apt-get update -y && apt-get upgrade -y
+RUN apt-get install googler -y
 
+COPY config.yml /etc/g-alert/config.yml
 ENV CONFIG_PATH="/etc/g-alert/config.yml"
 
-COPY config.yml /etc/g-alert
-COPY g-alert    /
-CMD ["/g-alert"]
+COPY . /usr/src/app
+WORKDIR /usr/src/app
+RUN make build
+CMD ["./g-alert"]
