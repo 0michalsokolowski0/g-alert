@@ -3,12 +3,12 @@ module github.com/0michalsokolowski0/g-alert
 go 1.17
 
 require (
-	github.com/go-co-op/gocron v1.10.0
+	github.com/go-co-op/gocron v1.15.0
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/xhit/go-simple-mail/v2 v2.10.0
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
